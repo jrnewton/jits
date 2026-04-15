@@ -1,0 +1,19 @@
+#!/bin/bash
+set -euo pipefail
+
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEST_DIR="$HOME/bin"
+
+if [ ! -d "$DEST_DIR" ]; then
+    echo "creating $DEST_DIR"
+    mkdir -p "$DEST_DIR"
+fi
+
+for f in "$SRC_DIR"/*; do
+    name="$(basename "$f")"
+    case "$name" in
+        _*) continue ;;
+    esac
+    ln -sfn "$f" "$DEST_DIR/$name"
+    echo "linked $DEST_DIR/$name -> $f"
+done
