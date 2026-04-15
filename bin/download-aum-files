@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+show_help() {
+  cat <<'EOF'
+download-aum-files — Recursively download all audio files served by
+AudioShare's built-in web interface (iOS app) over Wi-Fi.
+
+Usage:
+  download-aum-files [BASE_URL] [OUTPUT_DIR]
+  download-aum-files -h | --help
+
+Arguments:
+  BASE_URL    URL where AudioShare's web server is running
+  OUTPUT_DIR  Local directory to mirror files into
+
+Existing files are skipped so the script can be re-run to resume.
+
+Examples:
+  download-aum-files http://192.168.1.50
+  download-aum-files http://192.168.1.50 ~/Documents/AUM/
+EOF
+}
+
+if [[ $# -eq 0 || "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  show_help; exit 0
+fi
+
+BASE_URL="${1:-http://192.168.4.25}"
+OUTPUT_DIR="${2:-.}"
+
+python3 - "$BASE_URL" "$OUTPUT_DIR" << 'PYEOF'
+import json, os, sys, subprocess, urllib.request, urllib.parse
+
+base_url = sys.argv[1]
+output_dir = sys.argv[2]
+
+def list_files(dir_path):
+    """Recursively list all files, returning (path, size) tuples."""
+    encoded = urllib.parse.quote(dir_path)
+    url = f"{base_url}/list?path={encoded}"
+    with urllib.request.urlopen(url) as resp:
+        entries = json.loads(resp.read())
+    files = []
+    for entry in entries:
+        if "size" in entry:
+            files.append((entry["path"], entry["size"]))
+        else:
+            files.extend(list_files(entry["path"]))
+    return files
+
+def format_size(nbytes):
+    if nbytes >= 1_000_000_000:
+        return f"{nbytes / 1_000_000_000:.2f} GB"
+    if nbytes >= 1_000_000:
+        return f"{nbytes / 1_000_000:.2f} MB"
+    return f"{nbytes / 1_000:.2f} KB"
+
+print(f"Scanning {base_url} for files...")
+files = list_files("/")
+total = len(files)
+print(f"Found {total} file(s).\n")
+
+for i, (filepath, size) in enumerate(files, 1):
+    local_path = os.path.join(output_dir, filepath.lstrip("/"))
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+
+    if os.path.exists(local_path):
+        print(f"[{i}/{total}] SKIP (exists): {filepath}")
+        continue
+
+    print(f"[{i}/{total}] Downloading ({format_size(size)}): {filepath}")
+    encoded = urllib.parse.quote(filepath)
+    download_url = f"{base_url}/download?path={encoded}"
+    subprocess.run(["curl", "-f#", download_url, "-o", local_path], check=True)
+
+print(f"\nDone. Files saved under: {output_dir}")
+PYEOF

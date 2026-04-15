@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+show_help() {
+  cat <<'EOF'
+video-prep-import — Tonemap HDR (Dolby Vision / HLG / BT.2020) video to SDR
+ProRes 422 HQ for editing in DAWs like Reaper that don't tone-map HDR.
+
+Usage:
+  video-prep-import INPUT [OUTPUT]
+  video-prep-import -h | --help
+
+If OUTPUT is omitted, it defaults to <INPUT_basename>_sdr.mov.
+
+Examples:
+  video-prep-import ~/Downloads/IMG_7202.mov
+  video-prep-import ~/Downloads/IMG_7202.mov ~/Desktop/clip_sdr.mov
+EOF
+}
+
+if [[ $# -eq 0 || "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  show_help; exit 0
+fi
+
+INPUT="${1/#\~/$HOME}"
+OUTPUT="${2:-${INPUT%.*}_sdr.mov}"
+OUTPUT="${OUTPUT/#\~/$HOME}"
+
+if [[ ! -f "$INPUT" ]]; then
+  echo "Error: input file not found: $INPUT" >&2
+  exit 1
+fi
+
+FFMPEG=/usr/local/opt/ffmpeg-full/bin/ffmpeg
+[[ -x "$FFMPEG" ]] || FFMPEG=ffmpeg
+
+echo "Tonemapping HDR -> SDR ProRes 422 HQ..."
+"$FFMPEG" -y -i "$INPUT" \
+  -vf "zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv,format=yuv420p" \
+  -c:v prores_ks -profile:v 3 \
+  -c:a copy \
+  "$OUTPUT"
+
+echo "Done: $OUTPUT"

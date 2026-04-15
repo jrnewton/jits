@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+show_help() {
+  cat <<'EOF'
+video-post-export — Re-encode a ProRes (or other large) export from Reaper
+to a compact H.265 / HEVC MP4 suitable for sharing/delivery.
+
+Usage:
+  video-post-export INPUT [OUTPUT] [CRF]
+  video-post-export -h | --help
+
+If OUTPUT is omitted, it defaults to <INPUT_basename>_h265.mp4.
+CRF controls quality (lower = better, bigger). Default: 23.
+  18 = visually lossless, 23 = standard, 28 = small.
+
+Examples:
+  video-post-export ~/Desktop/song.mov
+  video-post-export ~/Desktop/song.mov ~/Desktop/song.mp4
+  video-post-export ~/Desktop/song.mov ~/Desktop/song.mp4 20
+EOF
+}
+
+if [[ $# -eq 0 || "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  show_help; exit 0
+fi
+
+INPUT="${1/#\~/$HOME}"
+OUTPUT="${2:-${INPUT%.*}_h265.mp4}"
+OUTPUT="${OUTPUT/#\~/$HOME}"
+CRF="${3:-23}"
+
+if [[ ! -f "$INPUT" ]]; then
+  echo "Error: input file not found: $INPUT" >&2
+  exit 1
+fi
+
+FFMPEG=/usr/local/opt/ffmpeg-full/bin/ffmpeg
+[[ -x "$FFMPEG" ]] || FFMPEG=ffmpeg
+
+echo "Encoding to H.265 (CRF $CRF)..."
+"$FFMPEG" -y -i "$INPUT" \
+  -c:v libx265 -crf "$CRF" -preset slow -tag:v hvc1 \
+  -c:a aac -b:a 256k \
+  -movflags +faststart \
+  "$OUTPUT"
+
+echo "Done: $OUTPUT"
